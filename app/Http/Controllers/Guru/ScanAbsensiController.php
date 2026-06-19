@@ -146,6 +146,26 @@ class ScanAbsensiController extends Controller
             }
         }
 
+        if ($isWaktuAbsen) {
+            // FASE 1: Generate Encrypted Token Handoff
+            $payload = json_encode([
+                'user_id' => $user->id,
+                'ip_address' => $ipUser,
+                'timestamp' => time()
+            ]);
+            
+            // Enkripsi payload menggunakan APP_KEY
+            $token = \Illuminate\Support\Facades\Crypt::encryptString($payload);
+            
+            // Ambil URL Hosting dari .env
+            $hostingUrl = env('HOSTING_URL', 'https://absensi-sekolah.com');
+            
+            // Hilangkan slash di akhir jika ada, lalu sambungkan dengan route online
+            $hostingUrl = rtrim($hostingUrl, '/');
+            
+            return redirect()->away($hostingUrl . '/guru/scan-online?token=' . urlencode($token));
+        }
+
         return view('guru.scan.index', compact('wajahTerdaftar', 'ipValid', 'ipUser', 'pengaturan', 'isWaktuAbsen', 'pesanWaktu'));
     }
 
@@ -249,6 +269,84 @@ class ScanAbsensiController extends Controller
                     'message' => 'Gagal mencatat! Pastikan Anda sudah menjalankan migration untuk menambah kolom "jam_pulang" di tabel "absensis".'
                 ]);
             }
+        }
+    }
+
+    // =========================================================================
+    // FASE 3: FUNGSI UNTUK SERVER HOSTING (ONLINE)
+    // =========================================================================
+
+    public function onlineScan(Request $request)
+    {
+        $token = $request->query('token');
+        if (!$token) {
+            abort(403, 'Akses ditolak. Token tidak ditemukan. Pastikan Anda mengakses dari jaringan sekolah terlebih dahulu.');
+        }
+
+        try {
+            // Dekripsi token
+            $payloadString = \Illuminate\Support\Facades\Crypt::decryptString($token);
+            $payload = json_decode($payloadString);
+
+            // Cek kadaluarsa token (misal: 5 menit)
+            $tokenTime = $payload->timestamp ?? 0;
+            if (time() - $tokenTime > 300) {
+                abort(403, 'Token kadaluarsa. Silakan ulangi scan QR dari sistem sekolah.');
+            }
+
+            $user = \App\Models\User::find($payload->user_id);
+            if (!$user) {
+                abort(404, 'Data guru tidak ditemukan.');
+            }
+
+            // Auto-login sementara untuk memudahkan proses absensi
+            auth()->login($user);
+
+            $wajahTerdaftar = !empty($user->face_descriptor);
+            
+            // Pengaturan untuk view
+            $pengaturan = PengaturanAbsensi::first();
+            $ipValid = true; // Langsung dianggap valid karena sudah divalidasi oleh Token
+            $ipUser = $payload->ip_address;
+            $isWaktuAbsen = true;
+            $pesanWaktu = '';
+
+            // Render view (kita bisa pakai view yang sama atau buat khusus online)
+            return view('guru.scan.online', compact('wajahTerdaftar', 'ipValid', 'ipUser', 'pengaturan', 'isWaktuAbsen', 'pesanWaktu', 'token', 'user'));
+
+        } catch (\Exception $e) {
+            abort(403, 'Token tidak valid. Pastikan APP_KEY antara lokal dan hosting sama. Detail: ' . $e->getMessage());
+        }
+    }
+
+    public function onlineStore(Request $request)
+    {
+        $token = $request->input('token');
+        if (!$token) {
+            return response()->json(['success' => false, 'message' => 'Token absensi tidak ditemukan.']);
+        }
+
+        try {
+            $payloadString = \Illuminate\Support\Facades\Crypt::decryptString($token);
+            $payload = json_decode($payloadString);
+            
+            if (time() - $payload->timestamp > 300) {
+                return response()->json(['success' => false, 'message' => 'Waktu habis! Token absensi kadaluarsa. Silakan ambil QR baru.']);
+            }
+
+            $user = \App\Models\User::find($payload->user_id);
+            if (!$user) {
+                return response()->json(['success' => false, 'message' => 'User tidak ditemukan.']);
+            }
+
+            // Kita login-kan lagi sekadar untuk berjaga-jaga (karena request API JSON auth session bisa saja hilang)
+            auth()->login($user);
+
+            // Jalankan fungsi store aslinya!
+            return $this->store($request);
+
+        } catch (\Exception $e) {
+            return response()->json(['success' => false, 'message' => 'Sistem menolak: Token tidak valid atau dimanipulasi.']);
         }
     }
 }
