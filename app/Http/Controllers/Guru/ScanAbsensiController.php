@@ -114,7 +114,7 @@ class ScanAbsensiController extends Controller
             }
         }
 
-        if ($isWaktuAbsen) {
+        if ($isWaktuAbsen && $wajahTerdaftar) {
             // FASE 1: Generate Encrypted Token Handoff
             $payload = json_encode([
                 'user_id' => $user->id,
