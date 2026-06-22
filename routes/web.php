@@ -107,9 +107,7 @@ Route::middleware(['auth', 'role:kepala_yayasan'])->prefix('yayasan')->group(fun
 });
 
 // 5. Group Routes: GURU
-// Rute untuk menerima lemparan dari Lokal (Tidak butuh auth karena divalidasi via Token Enkripsi)
-Route::get('/guru/scan-online', [ScanAbsensiController::class, 'onlineScan'])->name('guru.scan.online');
-Route::post('/guru/scan-online/store', [ScanAbsensiController::class, 'onlineStore'])->name('guru.scan.online.store');
+
 
 Route::middleware(['auth', 'role:guru'])->prefix('guru')->group(function () {
     Route::get('/dashboard', [GuruDashboardController::class, 'index'])->name('guru.dashboard');

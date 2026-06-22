@@ -17,8 +17,40 @@ class ScanAbsensiController extends Controller
 {
     private function cekJaringanWifi($ipUser)
     {
-        // Bypassed: Langsung return true agar tidak diblokir saat testing/sidang
-        return true;
+        $allowedIps = IpLokal::where('is_active', true)->pluck('ip_address');
+        foreach ($allowedIps as $allowedIp) {
+            // 1. Cek Exact Match atau pola Wildcard bawaan (%)
+            $pattern = str_replace('%', '*', $allowedIp);
+            if (Str::is($pattern, $ipUser)) return true;
+
+            // 2. Auto-Subnet IPv4 (Memeriksa 2 blok angka pertama)
+            // Karena IP Publik ISP di Indonesia (seperti Telkomsel/Indihome) sangat dinamis (contoh: 114.10.84.193 bisa berubah jadi 114.10.85.10)
+            $partsAllowed = explode('.', $allowedIp);
+            $partsUser = explode('.', $ipUser);
+            
+            if (count($partsAllowed) === 4 && count($partsUser) === 4) {
+                // Hanya periksa 2 blok pertama (misal: 114.10.x.x)
+                if ($partsAllowed[0] === $partsUser[0] && 
+                    $partsAllowed[1] === $partsUser[1]) {
+                    return true;
+                }
+            }
+
+            // 3. Auto-Subnet IPv6 (Mencocokkan 4 blok awal / Prefix ISP)
+            $ipv6Allowed = explode(':', $allowedIp);
+            $ipv6User = explode(':', $ipUser);
+            if (count($ipv6Allowed) >= 4 && count($ipv6User) >= 4) {
+                // Cek 4 blok pertama (Prefix IPv6 yang diberikan ISP ke Router Sekolah)
+                // Ini mencegah HP dari rumah dengan provider yang sama (awalan 2001:) ikut lolos
+                if ($ipv6Allowed[0] === $ipv6User[0] && 
+                    $ipv6Allowed[1] === $ipv6User[1] && 
+                    $ipv6Allowed[2] === $ipv6User[2] &&
+                    $ipv6Allowed[3] === $ipv6User[3]) {
+                    return true;
+                }
+            }
+        }
+        return false;
     }
 
     public function index()
@@ -112,26 +144,6 @@ class ScanAbsensiController extends Controller
                 $isWaktuAbsen = false;
                 $pesanWaktu = 'Anda telah menyelesaikan Absensi Masuk dan Pulang hari ini. Selamat beristirahat!';
             }
-        }
-
-        if ($isWaktuAbsen && $wajahTerdaftar) {
-            // FASE 1: Generate Encrypted Token Handoff
-            $payload = json_encode([
-                'user_id' => $user->id,
-                'ip_address' => $ipUser,
-                'timestamp' => time()
-            ]);
-            
-            // Enkripsi payload menggunakan APP_KEY
-            $token = \Illuminate\Support\Facades\Crypt::encryptString($payload);
-            
-            // Ambil URL Hosting dari .env
-            $hostingUrl = env('HOSTING_URL', 'https://absensi-sekolah.com');
-            
-            // Hilangkan slash di akhir jika ada, lalu sambungkan dengan route online
-            $hostingUrl = rtrim($hostingUrl, '/');
-            
-            return redirect()->away($hostingUrl . '/guru/scan-online?token=' . urlencode($token));
         }
 
         return view('guru.scan.index', compact('wajahTerdaftar', 'ipValid', 'ipUser', 'pengaturan', 'isWaktuAbsen', 'pesanWaktu'));
@@ -240,84 +252,5 @@ class ScanAbsensiController extends Controller
         }
     }
 
-    // =========================================================================
-    // FASE 3: FUNGSI UNTUK SERVER HOSTING (ONLINE)
-    // =========================================================================
 
-    public function onlineScan(Request $request)
-    {
-        $token = $request->query('token');
-        if (!$token) {
-            $pesanWaktu = 'Akses ditolak. Token tidak ditemukan. Pastikan Anda men-scan QR Code dari jaringan sekolah terlebih dahulu.';
-            return view('guru.scan.online', ['isWaktuAbsen' => false, 'pesanWaktu' => $pesanWaktu, 'ipValid' => false, 'wajahTerdaftar' => false]);
-        }
-
-        try {
-            // Dekripsi token
-            $payloadString = \Illuminate\Support\Facades\Crypt::decryptString($token);
-            $payload = json_decode($payloadString);
-
-            // Cek kadaluarsa token (di-set 10 menit / 600 detik)
-            $tokenTime = $payload->timestamp ?? 0;
-            if (time() - $tokenTime > 600) {
-                $pesanWaktu = 'Maaf kamu dilarang akses web lagi, silakan scan barcode kembali untuk melakukan absensi.';
-                return view('guru.scan.online', ['isWaktuAbsen' => false, 'pesanWaktu' => $pesanWaktu, 'ipValid' => false, 'wajahTerdaftar' => false]);
-            }
-
-            $user = \App\Models\User::find($payload->user_id);
-            if (!$user) {
-                $pesanWaktu = 'Data guru tidak ditemukan.';
-                return view('guru.scan.online', ['isWaktuAbsen' => false, 'pesanWaktu' => $pesanWaktu, 'ipValid' => false, 'wajahTerdaftar' => false]);
-            }
-
-            // Auto-login sementara untuk memudahkan proses absensi
-            auth()->login($user);
-
-            $wajahTerdaftar = !empty($user->face_descriptor);
-            
-            // Pengaturan untuk view
-            $pengaturan = PengaturanAbsensi::first();
-            $ipValid = true; // Langsung dianggap valid karena sudah divalidasi oleh Token
-            $ipUser = $payload->ip_address;
-            $isWaktuAbsen = true;
-            $pesanWaktu = '';
-
-            // Render view (kita bisa pakai view yang sama atau buat khusus online)
-            return view('guru.scan.online', compact('wajahTerdaftar', 'ipValid', 'ipUser', 'pengaturan', 'isWaktuAbsen', 'pesanWaktu', 'token', 'user'));
-
-        } catch (\Exception $e) {
-            abort(403, 'Token tidak valid. Pastikan APP_KEY antara lokal dan hosting sama. Detail: ' . $e->getMessage());
-        }
-    }
-
-    public function onlineStore(Request $request)
-    {
-        $token = $request->input('token');
-        if (!$token) {
-            return response()->json(['success' => false, 'message' => 'Token absensi tidak ditemukan.']);
-        }
-
-        try {
-            $payloadString = \Illuminate\Support\Facades\Crypt::decryptString($token);
-            $payload = json_decode($payloadString);
-            
-            if (time() - $payload->timestamp > 600) {
-                return response()->json(['success' => false, 'message' => 'Maaf kamu dilarang akses web lagi, silakan scan barcode kembali untuk melakukan absensi.']);
-            }
-
-            $user = \App\Models\User::find($payload->user_id);
-            if (!$user) {
-                return response()->json(['success' => false, 'message' => 'User tidak ditemukan.']);
-            }
-
-            // Kita login-kan lagi sekadar untuk berjaga-jaga (karena request API JSON auth session bisa saja hilang)
-            auth()->login($user);
-
-            // Jalankan fungsi store aslinya!
-            return $this->store($request);
-
-        } catch (\Exception $e) {
-            return response()->json(['success' => false, 'message' => 'Sistem menolak: Token tidak valid atau dimanipulasi.']);
-        }
-    }
 }

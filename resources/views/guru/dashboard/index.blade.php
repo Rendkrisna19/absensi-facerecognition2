@@ -3,6 +3,23 @@
 @section('page_title', auth()->user()->name)
 
 @section('content')
+@if(!$ipValid)
+    <div class="flex flex-col items-center justify-center min-h-[60vh] px-2 py-4">
+        <div class="bg-white border border-gray-100 text-gray-700 p-8 rounded-3xl text-center w-full shadow-sm relative overflow-hidden flex flex-col items-center justify-center">
+            <div class="absolute -right-4 -top-4 w-24 h-24 bg-red-50 rounded-full blur-xl opacity-50"></div>
+            <div class="w-20 h-20 bg-red-50 text-red-500 rounded-full flex items-center justify-center mb-6 border border-red-100 shadow-inner">
+                <i class="fa-solid fa-lock text-4xl"></i>
+            </div>
+            <h3 class="text-base font-bold mb-2">Akses Beranda Dikunci</h3>
+            <p class="text-xs text-gray-400 leading-relaxed mb-6 max-w-[280px]">
+                Anda terdeteksi berada di luar jaringan WiFi sekolah yang terdaftar. Fitur absensi dan menu utama tidak dapat diakses. Silakan hubungkan ke WiFi sekolah.
+            </p>
+            <div class="text-[11px] text-gray-500 bg-gray-50 px-4 py-2 rounded-xl border border-gray-100 font-mono">
+                IP Anda saat ini: <span class="font-bold text-red-500">{{ $ipUser ?? 'Tidak terdeteksi' }}</span>
+            </div>
+        </div>
+    </div>
+@else
 <div class="space-y-6">
 
     <div class="flex items-center justify-between px-1">
@@ -181,16 +198,19 @@
     @endif
 
 </div>
+@endif
 
 @push('scripts')
 <script>
     function updateClock() {
+        const clockEl = document.getElementById('realtime-clock');
+        if (!clockEl) return;
         const date = new Date();
         const hours = date.getHours().toString().padStart(2, '0');
         const minutes = date.getMinutes().toString().padStart(2, '0');
         const separator = date.getSeconds() % 2 === 0 ? ':' : '<span class="opacity-50">:</span>';
         
-        document.getElementById('realtime-clock').innerHTML = 
+        clockEl.innerHTML = 
             `<i class="fa-regular fa-clock"></i> <span>${hours}${separator}${minutes}</span>`;
     }
     
