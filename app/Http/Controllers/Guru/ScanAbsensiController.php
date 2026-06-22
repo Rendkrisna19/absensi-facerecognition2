@@ -146,6 +146,19 @@ class ScanAbsensiController extends Controller
             }
         }
 
+        // Jika kita berada di server LOKAL, redirect otomatis ke server HOSTING agar bisa scan via HTTPS
+        $hostingUrl = env('HOSTING_URL');
+        if (!empty($hostingUrl)) {
+            $parsedHosting = parse_url($hostingUrl);
+            $hostingHost = $parsedHosting['host'] ?? '';
+            
+            if (request()->getHost() !== $hostingHost) {
+                if ($isWaktuAbsen && $wajahTerdaftar) {
+                    return redirect()->away(rtrim($hostingUrl, '/') . '/guru/scan-absensi');
+                }
+            }
+        }
+
         return view('guru.scan.index', compact('wajahTerdaftar', 'ipValid', 'ipUser', 'pengaturan', 'isWaktuAbsen', 'pesanWaktu'));
     }
 
