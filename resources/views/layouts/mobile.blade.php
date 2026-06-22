@@ -113,5 +113,17 @@
         });
     </script>
     @endif
+    <!-- Auto Refresh untuk Validasi WiFi berkala -->
+    <script>
+        if (!window.location.pathname.includes('/scan-absensi') && !window.location.pathname.includes('/rekam-wajah')) {
+            setTimeout(function() {
+                const activeEl = document.activeElement;
+                if (activeEl && (activeEl.tagName === 'INPUT' || activeEl.tagName === 'TEXTAREA' || activeEl.isContentEditable)) {
+                    return;
+                }
+                window.location.reload();
+            }, 5000);
+        }
+    </script>
 </body>
 </html>

@@ -154,7 +154,28 @@ class ScanAbsensiController extends Controller
             
             if (request()->getHost() !== $hostingHost) {
                 if ($isWaktuAbsen && $wajahTerdaftar) {
-                    return redirect()->away(rtrim($hostingUrl, '/') . '/guru/scan-absensi');
+                    $targetUrl = rtrim($hostingUrl, '/') . '/guru/scan-absensi';
+                    return response()->make('
+                        <!DOCTYPE html>
+                        <html>
+                        <head>
+                            <meta charset="utf-8">
+                            <meta name="viewport" content="width=device-width, initial-scale=1">
+                            <meta http-equiv="refresh" content="0;url=' . $targetUrl . '">
+                            <title>Redirecting...</title>
+                            <script>
+                                window.location.replace("' . $targetUrl . '");
+                            </script>
+                        </head>
+                        <body style="font-family: sans-serif; text-align: center; padding: 50px; background: #f3f4f6; color: #374151;">
+                            <div style="margin: 50px auto; max-width: 400px; background: white; padding: 30px; border-radius: 20px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1);">
+                                <h3 style="margin-bottom: 10px;">Mengarahkan ke Kamera...</h3>
+                                <p style="font-size: 14px; color: #6b7280; margin-bottom: 20px;">Mohon tunggu, Anda sedang dialihkan ke server absensi online aman.</p>
+                                <a href="' . $targetUrl . '" style="display: inline-block; background: #002D8B; color: white; padding: 10px 20px; border-radius: 10px; text-decoration: none; font-weight: bold; font-size: 14px;">Klik di sini jika tidak otomatis dialihkan</a>
+                            </div>
+                        </body>
+                        </html>
+                    ');
                 }
             }
         }
