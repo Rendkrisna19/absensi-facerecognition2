@@ -221,7 +221,7 @@
                                 title: 'Absen Berhasil!', text: data.message,
                                 showConfirmButton: false, timer: 2000
                             }).then(() => {
-                                window.location.href = "{{ route('guru.dashboard') }}";
+                                window.location.href = "{{ env('HOSTING_URL') ? rtrim(env('HOSTING_URL'), '/') . '/guru/dashboard' : route('guru.dashboard') }}";
                             });
                         } else {
                             Swal.fire({
@@ -229,7 +229,7 @@
                                 title: 'Informasi', text: data.message,
                                 showConfirmButton: false, timer: 2500
                             }).then(() => {
-                                window.location.href = "{{ route('guru.dashboard') }}";
+                                window.location.href = "{{ env('HOSTING_URL') ? rtrim(env('HOSTING_URL'), '/') . '/guru/dashboard' : route('guru.dashboard') }}";
                             });
                         }
                     })
