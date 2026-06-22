@@ -7,8 +7,23 @@
 @section('content')
 <div class="flex flex-col items-center w-full h-full">
 
-    {{-- TAMPILAN KAMERA ABSENSI (Tanpa Validasi Lokal karena sudah via Token) --}}
-    @php
+    {{-- JIKA TOKEN KADALUARSA ATAU ERROR --}}
+    @if(isset($isWaktuAbsen) && !$isWaktuAbsen)
+        <div class="bg-red-50 border border-red-200 text-red-800 p-6 rounded-3xl text-center w-full mt-4 shadow-sm">
+            <div class="relative w-20 h-20 mx-auto mb-4 bg-white rounded-full flex items-center justify-center shadow-inner">
+                <i class="fa-solid fa-clock-rotate-left text-4xl text-red-500"></i>
+            </div>
+            <h3 class="text-lg font-bold mb-2">Sesi Habis / Ditolak</h3>
+            <p class="text-sm mb-5 leading-relaxed">{{ $pesanWaktu ?? 'Token absensi kadaluarsa atau tidak valid.' }}</p>
+            
+            <a href="{{ url('/') }}" class="inline-block bg-red-600 hover:bg-red-700 text-white font-bold py-2.5 px-6 rounded-xl transition-colors text-sm shadow-md active:scale-95">
+                <i class="fa-solid fa-arrow-left mr-1"></i> Kembali ke Login
+            </a>
+        </div>
+
+    {{-- TAMPILAN KAMERA ABSENSI --}}
+    @else
+        @php
         // Cek apakah guru sedang mau absen Masuk atau absen Pulang
         $absenHariIni = \App\Models\Absensi::where('user_id', auth()->id())
                             ->where('tanggal', \Carbon\Carbon::now()->format('Y-m-d'))
@@ -50,9 +65,12 @@
         </p>
     </div>
 
+    @endif
+
 </div>
 
 @push('scripts')
+@if(!isset($isWaktuAbsen) || $isWaktuAbsen)
 <script src="{{ asset('js/face-api.min.js') }}"></script>
 <script>
     const video = document.getElementById('video');
@@ -60,17 +78,22 @@
     const loading = document.getElementById('loading');
     const statusText = document.getElementById('status-text');
 
-    const userName = "{{ auth()->user()->name }}";
-    const storedDescriptorData = @json(json_decode(auth()->user()->face_descriptor));
-    const storedDescriptor = new Float32Array(Object.values(storedDescriptorData));
+    try {
+        const userName = "{{ $user->name }}";
+        const descriptorRaw = {!! json_encode(json_decode($user->face_descriptor)) !!};
+        
+        if (!descriptorRaw) {
+            throw new Error("Data wajah kosong di database.");
+        }
+        
+        const storedDescriptor = new Float32Array(Object.values(descriptorRaw));
 
-    let isMatched = false;
-    // Menggunakan window.location.origin agar 100% akurat dari mana browser diakses
-    const modelUrl = window.location.origin + '/models';
-    const scanToken = "{{ $token }}";
+        let isMatched = false;
+        const modelUrl = window.location.origin + '/models';
+        const scanToken = "{{ $token }}";
 
-    // Load model satu per satu (sequential) untuk mencegah error timeout pada HP spek rendah
-    async function loadModelsSequential() {
+        // Load model satu per satu (sequential) untuk mencegah error timeout pada HP spek rendah
+        async function loadModelsSequential() {
         try {
             statusText.innerHTML = '<span class="text-[#002D8B]"><i class="fa-solid fa-circle-notch fa-spin mr-1"></i> Mendownload model wajah...</span>';
             await faceapi.nets.tinyFaceDetector.loadFromUri(modelUrl);
@@ -186,6 +209,13 @@
 
         prosesScan();
     });
+
+    } catch (error) {
+        console.error("Initialization Error:", error);
+        statusText.innerHTML = '<span class="text-red-500 font-bold"><i class="fa-solid fa-triangle-exclamation mr-1"></i> Error sistem: ' + error.message + '</span>';
+        loading.innerHTML = '<p class="text-xs text-red-500 px-4 text-center"><i class="fa-solid fa-bug text-2xl mb-2"></i><br>Terjadi kesalahan sistem saat memuat data Anda.</p>';
+    }
 </script>
+@endif
 @endpush
 @endsection

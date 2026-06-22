@@ -248,7 +248,8 @@ class ScanAbsensiController extends Controller
     {
         $token = $request->query('token');
         if (!$token) {
-            abort(403, 'Akses ditolak. Token tidak ditemukan. Pastikan Anda mengakses dari jaringan sekolah terlebih dahulu.');
+            $pesanWaktu = 'Akses ditolak. Token tidak ditemukan. Pastikan Anda men-scan QR Code dari jaringan sekolah terlebih dahulu.';
+            return view('guru.scan.online', ['isWaktuAbsen' => false, 'pesanWaktu' => $pesanWaktu, 'ipValid' => false, 'wajahTerdaftar' => false]);
         }
 
         try {
@@ -256,15 +257,17 @@ class ScanAbsensiController extends Controller
             $payloadString = \Illuminate\Support\Facades\Crypt::decryptString($token);
             $payload = json_decode($payloadString);
 
-            // Cek kadaluarsa token (misal: 5 menit)
+            // Cek kadaluarsa token (di-set 10 menit / 600 detik)
             $tokenTime = $payload->timestamp ?? 0;
-            if (time() - $tokenTime > 300) {
-                abort(403, 'Token kadaluarsa. Silakan ulangi scan QR dari sistem sekolah.');
+            if (time() - $tokenTime > 600) {
+                $pesanWaktu = 'Maaf kamu dilarang akses web lagi, silakan scan barcode kembali untuk melakukan absensi.';
+                return view('guru.scan.online', ['isWaktuAbsen' => false, 'pesanWaktu' => $pesanWaktu, 'ipValid' => false, 'wajahTerdaftar' => false]);
             }
 
             $user = \App\Models\User::find($payload->user_id);
             if (!$user) {
-                abort(404, 'Data guru tidak ditemukan.');
+                $pesanWaktu = 'Data guru tidak ditemukan.';
+                return view('guru.scan.online', ['isWaktuAbsen' => false, 'pesanWaktu' => $pesanWaktu, 'ipValid' => false, 'wajahTerdaftar' => false]);
             }
 
             // Auto-login sementara untuk memudahkan proses absensi
@@ -298,8 +301,8 @@ class ScanAbsensiController extends Controller
             $payloadString = \Illuminate\Support\Facades\Crypt::decryptString($token);
             $payload = json_decode($payloadString);
             
-            if (time() - $payload->timestamp > 300) {
-                return response()->json(['success' => false, 'message' => 'Waktu habis! Token absensi kadaluarsa. Silakan ambil QR baru.']);
+            if (time() - $payload->timestamp > 600) {
+                return response()->json(['success' => false, 'message' => 'Maaf kamu dilarang akses web lagi, silakan scan barcode kembali untuk melakukan absensi.']);
             }
 
             $user = \App\Models\User::find($payload->user_id);
